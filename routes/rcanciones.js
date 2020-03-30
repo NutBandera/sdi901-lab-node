@@ -88,13 +88,43 @@ module.exports = function (app, swig, gestorBD) {
             usuario: req.session.usuario,
             cancionId: cancionId
         }
-        gestorBD.insertarCompra(compra, function (idCompra) { // check no comprada
-            if (idCompra == null) {
-                res.send(respuesta);
+        let puedeComprar = true;
+        let criterioCancion = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
+        gestorBD.obtenerCanciones(criterioCancion, function (canciones) {
+            if (canciones == null) {
+                res.send(canciones);
             } else {
-                res.redirect("/compras");
+                if (canciones[0].autor == req.session.usuario) {
+                    puedeComprar = false;
+                } else {
+                    let criterio = {
+                        "usuario": req.session.usuario,
+                        "cancionId": cancionId
+                    };
+                    gestorBD.obtenerCompras(criterio, function (compras) {
+                        if (compras.length > 0) {
+                            puedeComprar = false;
+                        }
+                        if (!puedeComprar) {
+                            let respuesta = swig.renderFile("views/error.html", {
+                                error: "Error de compra"
+                            });
+                            res.send(respuesta);
+                        } else {
+                            gestorBD.insertarCompra(compra, function (idCompra) {
+                                if (idCompra == null) {
+                                    res.send(respuesta);
+                                } else {
+                                    res.redirect("/compras");
+                                }
+                            });
+                        }
+                    });
+                }
+
             }
         });
+
     });
 
     app.get('/compras', function (req, res) {
@@ -221,7 +251,8 @@ module.exports = function (app, swig, gestorBD) {
 
     app.get('/cancion/:id', function (req, res) {
         let criterioCancion = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
-        let criterioComentario = {}; // id de la canción
+        let criterioComentario = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
+        let showButton = true;
         gestorBD.obtenerCanciones(criterioCancion, function (canciones) {
             if (canciones == null) {
                 res.send(canciones);
@@ -230,26 +261,28 @@ module.exports = function (app, swig, gestorBD) {
                     if (comentarios == null) {
                         res.send("Error al listar ");
                     } else {
-                        let criterio = {"usuario": req.session.usuario};
-                        let comprada = false;
-                        gestorBD.obtenerCompras(criterio, function (compras) {
-                            console.log(compras.length)
-                            for (let i = 0; i < compras.length; i++) {
-                                if (compras[i].cancionId.toString() == canciones[0]._id.toString()) {
-                                    comprada = true;
+                        if (canciones[0].autor == req.session.usuario) {
+                            showButton = false;
+                        } else {
+                            let criterio = {
+                                "usuario": req.session.usuario,
+                                "cancionId": gestorBD.mongo.ObjectID(req.params.id)
+                            };
+                            gestorBD.obtenerCompras(criterio, function (compras) {
+                                if (compras.length > 0) {
+                                    showButton = false;
                                 }
-                            }
-                            let respuesta = swig.renderFile('views/bcancion.html',
-                                {
-                                    cancion: canciones[0],
-                                    comentarios: comentarios,
-                                    comprada: comprada
-                                });
-                            res.send(respuesta);
-                        });
-
-
+                                let respuesta = swig.renderFile('views/bcancion.html',
+                                    {
+                                        cancion: canciones[0],
+                                        comentarios: comentarios,
+                                        showButton: showButton
+                                    });
+                                res.send(respuesta);
+                            });
+                        }
                     }
+
                 });
             }
         });
