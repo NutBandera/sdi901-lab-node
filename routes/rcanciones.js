@@ -88,7 +88,7 @@ module.exports = function (app, swig, gestorBD) {
             usuario: req.session.usuario,
             cancionId: cancionId
         }
-        gestorBD.insertarCompra(compra, function (idCompra) {
+        gestorBD.insertarCompra(compra, function (idCompra) { // check no comprada
             if (idCompra == null) {
                 res.send(respuesta);
             } else {
@@ -184,92 +184,105 @@ module.exports = function (app, swig, gestorBD) {
     });
 
 
-app.post("/cancion", function (req, res) {
-    let cancion = {
-        nombre: req.body.nombre,
-        genero: req.body.genero,
-        precio: req.body.precio,
-        autor: req.session.usuario
-    }
-    // Conectarse
-    gestorBD.insertarCancion(cancion, function (id) {
-        if (id == null) {
-            res.send("Error al insertar canción");
-        } else {
-            if (req.files.portada != null) {
-                let imagen = req.files.portada;
-                imagen.mv('public/portadas/' + id + '.png', function (err) {
-                    if (err) {
-                        res.send("Error al subir la portada");
-                    } else {
-                        if (req.files.audio != null) {
-                            let audio = req.files.audio;
-                            audio.mv('public/audios/' + id + '.mp3', function (err) {
-                                if (err) {
-                                    res.send("Error al subir el audio");
-                                } else {
-                                    res.redirect("/publicaciones");
-                                }
-                            });
+    app.post("/cancion", function (req, res) {
+        let cancion = {
+            nombre: req.body.nombre,
+            genero: req.body.genero,
+            precio: req.body.precio,
+            autor: req.session.usuario
+        }
+        // Conectarse
+        gestorBD.insertarCancion(cancion, function (id) {
+            if (id == null) {
+                res.send("Error al insertar canción");
+            } else {
+                if (req.files.portada != null) {
+                    let imagen = req.files.portada;
+                    imagen.mv('public/portadas/' + id + '.png', function (err) {
+                        if (err) {
+                            res.send("Error al subir la portada");
+                        } else {
+                            if (req.files.audio != null) {
+                                let audio = req.files.audio;
+                                audio.mv('public/audios/' + id + '.mp3', function (err) {
+                                    if (err) {
+                                        res.send("Error al subir el audio");
+                                    } else {
+                                        res.redirect("/publicaciones");
+                                    }
+                                });
+                            }
                         }
+                    });
+                }
+            }
+        });
+    });
+
+    app.get('/cancion/:id', function (req, res) {
+        let criterioCancion = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
+        let criterioComentario = {}; // id de la canción
+        gestorBD.obtenerCanciones(criterioCancion, function (canciones) {
+            if (canciones == null) {
+                res.send(canciones);
+            } else {
+                gestorBD.obtenerComentarios(criterioComentario, function (comentarios) {
+                    if (comentarios == null) {
+                        res.send("Error al listar ");
+                    } else {
+                        let criterio = {"usuario": req.session.usuario};
+                        let comprada = false;
+                        gestorBD.obtenerCompras(criterio, function (compras) {
+                            console.log(compras.length)
+                            for (let i = 0; i < compras.length; i++) {
+                                if (compras[i].cancionId.toString() == canciones[0]._id.toString()) {
+                                    comprada = true;
+                                }
+                            }
+                            let respuesta = swig.renderFile('views/bcancion.html',
+                                {
+                                    cancion: canciones[0],
+                                    comentarios: comentarios,
+                                    comprada: comprada
+                                });
+                            res.send(respuesta);
+                        });
+
+
                     }
                 });
             }
-        }
-    });
-});
+        });
 
-app.get('/cancion/:id', function (req, res) {
-    let criterioCancion = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
-    let criterioComentario = {}; // id de la canción
-    gestorBD.obtenerCanciones(criterioCancion, function (canciones) {
-        if (canciones == null) {
-            res.send(respuesta);
-        } else {
-            gestorBD.obtenerComentarios(criterioComentario, function (comentarios) {
-                if (comentarios == null) {
-                    res.send("Error al listar ");
-                } else {
-                    let respuesta = swig.renderFile('views/bcancion.html',
-                        {
-                            cancion: canciones[0],
-                            comentarios: comentarios
-                        });
-                    res.send(respuesta);
-                }
-            });
-        }
     });
 
-});
-
-app.get('/promo*', function (req, res) {
-    res.send('Respuesta patrón promo* ');
-});
-
-app.get('/cancion/eliminar/:id', function (req, res) {
-    let criterio = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
-    gestorBD.eliminarCancion(criterio, function (canciones) {
-        if (canciones == null) {
-            res.send(respuesta);
-        } else {
-            res.redirect("/publicaciones");
-        }
+    app.get('/promo*', function (req, res) {
+        res.send('Respuesta patrón promo* ');
     });
-});
 
-app.get("/publicaciones", function (req, res) {
-    let criterio = {autor: req.session.usuario};
-    gestorBD.obtenerCanciones(criterio, function (canciones) {
-        if (canciones == null) {
-            res.send("Error al listar ");
-        } else {
-            let respuesta = swig.renderFile('views/bpublicaciones.html',
-                {
-                    canciones: canciones
-                });
-            res.send(respuesta);
-        }
+    app.get('/cancion/eliminar/:id', function (req, res) {
+        let criterio = {"_id": gestorBD.mongo.ObjectID(req.params.id)};
+        gestorBD.eliminarCancion(criterio, function (canciones) {
+            if (canciones == null) {
+                res.send(respuesta);
+            } else {
+                res.redirect("/publicaciones");
+            }
+        });
     });
-});
+
+    app.get("/publicaciones", function (req, res) {
+        let criterio = {autor: req.session.usuario};
+        gestorBD.obtenerCanciones(criterio, function (canciones) {
+            if (canciones == null) {
+                res.send("Error al listar ");
+            } else {
+                let respuesta = swig.renderFile('views/bpublicaciones.html',
+                    {
+                        canciones: canciones
+                    });
+                res.send(respuesta);
+            }
+        });
+    });
 }
